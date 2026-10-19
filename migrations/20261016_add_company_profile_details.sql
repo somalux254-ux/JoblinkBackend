@@ -1,0 +1,17 @@
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS mission text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS vision text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS specialties text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company_values text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS achievements text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS work_environment text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS products_services jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS leadership jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company_history jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company_certifications jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS tagline text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS organization_type text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS business_model text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company_stage text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS customer_scale text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS annual_revenue text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS operating_locations text;
