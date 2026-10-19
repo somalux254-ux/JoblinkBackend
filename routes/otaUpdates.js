@@ -27,10 +27,16 @@ router.get('/latest', async (req, res) => {
       .filter(({ asset, match }) => match && /^https:\/\/github\.com\/somalux254-ux\/Somalux2\.0Frontend\/releases\/download\/Joblink\//.test(asset.browser_download_url))
       .sort((left, right) => Number(right.match[1]) - Number(left.match[1]))[0];
 
+    const checksum = latestAsset?.asset.digest?.match(/^sha256:([a-f0-9]{64})$/i)?.[1].toLowerCase();
+    if (latestAsset && !checksum) {
+      throw new Error(`GitHub did not provide a valid SHA-256 digest for ${latestAsset.asset.name}.`);
+    }
+
     cachedUpdate = latestAsset
       ? {
         version: latestAsset.match[1],
         downloadUrl: latestAsset.asset.browser_download_url,
+        checksum,
       }
       : null;
     cacheExpiresAt = Date.now() + CACHE_DURATION_MS;
