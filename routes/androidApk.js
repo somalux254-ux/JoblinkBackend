@@ -1,5 +1,6 @@
 const express = require('express');
 const axios = require('axios');
+const { getGitHubApiHeaders } = require('../services/githubApi');
 
 const router = express.Router();
 const APK_URL = 'https://github.com/somalux254-ux/Somalux2.0Frontend/releases/download/Somalux/Somalux.apk';
@@ -22,7 +23,7 @@ const compareVersions = (currentVersion, latestVersion) => {
 router.get('/status', async (req, res) => {
   try {
     const response = await axios.get(LATEST_RELEASE_URL, {
-      headers: { Accept: 'application/vnd.github+json' }
+      headers: getGitHubApiHeaders()
     });
     const latestVersion = response.data.tag_name || response.data.name || '0';
     return res.json({
@@ -30,7 +31,12 @@ router.get('/status', async (req, res) => {
       updateAvailable: compareVersions(req.query.currentVersion, latestVersion)
     });
   } catch (error) {
-    console.warn('[apk-status] Failed to check Somalux release:', error.message);
+    const status = error.response?.status;
+    const message = error.response?.data?.message || error.message;
+    console.warn(
+      `[apk-status] Failed to check Somalux release${status ? ` (HTTP ${status})` : ''}:`,
+      message
+    );
     return res.json({ updateAvailable: false });
   }
 });

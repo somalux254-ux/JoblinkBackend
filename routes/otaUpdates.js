@@ -1,5 +1,6 @@
 const axios = require('axios');
 const express = require('express');
+const { getGitHubApiHeaders } = require('../services/githubApi');
 
 const router = express.Router();
 const GITHUB_RELEASE_URL = 'https://api.github.com/repos/somalux254-ux/Somalux2.0Frontend/releases/tags/Joblink';
@@ -16,10 +17,7 @@ router.get('/latest', async (req, res) => {
 
   try {
     const response = await axios.get(GITHUB_RELEASE_URL, {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'Joblink-OTA-Updates',
-      },
+      headers: getGitHubApiHeaders(),
       timeout: 10000,
     });
     const latestAsset = (response.data.assets || [])
@@ -42,7 +40,12 @@ router.get('/latest', async (req, res) => {
     cacheExpiresAt = Date.now() + CACHE_DURATION_MS;
     return res.json({ update: cachedUpdate });
   } catch (error) {
-    console.error('[ota-updates] Failed to fetch the latest GitHub bundle:', error.message);
+    const status = error.response?.status;
+    const message = error.response?.data?.message || error.message;
+    console.error(
+      `[ota-updates] Failed to fetch the latest GitHub bundle${status ? ` (HTTP ${status})` : ''}:`,
+      message
+    );
     if (cachedUpdate) {
       console.warn(`[ota-updates] Serving cached OTA bundle ${cachedUpdate.version} after the GitHub lookup failed.`);
       cacheExpiresAt = Date.now() + CACHE_DURATION_MS;
