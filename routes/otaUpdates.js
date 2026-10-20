@@ -43,6 +43,11 @@ router.get('/latest', async (req, res) => {
     return res.json({ update: cachedUpdate });
   } catch (error) {
     console.error('[ota-updates] Failed to fetch the latest GitHub bundle:', error.message);
+    if (cachedUpdate) {
+      console.warn(`[ota-updates] Serving cached OTA bundle ${cachedUpdate.version} after the GitHub lookup failed.`);
+      cacheExpiresAt = Date.now() + CACHE_DURATION_MS;
+      return res.json({ update: cachedUpdate });
+    }
     return res.status(502).json({ error: 'Could not check for OTA updates.' });
   }
 });
