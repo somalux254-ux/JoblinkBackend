@@ -34,7 +34,7 @@ function normalizeHex(s) {
 }
 
 async function main() {
-  console.log('Checking Android signing SHA-1 against android/app/google-services.json...');
+  
 
   if (!fs.existsSync(googleServicesPath)) {
     console.error('google-services.json not found at', googleServicesPath);
@@ -83,8 +83,8 @@ async function main() {
   const normalizedGradle = normalizeHex(foundSha);
   const normalizedCert = normalizeHex(certHash);
 
-  console.log('Detected local SHA-1:', foundSha);
-  console.log('google-services.json certificate_hash:', certHash);
+  
+  
 
   // Also check raw file content for either colon-separated or normalized hex fingerprint
   const colonForm = normalizedGradle.match(/.{2}/g).join(':').toUpperCase();
@@ -93,13 +93,13 @@ async function main() {
   const hasInRawHex = gsRawLower.indexOf(normalizedGradle) !== -1;
 
   if (normalizedCert && normalizedGradle === normalizedCert) {
-    console.log('\u2714 SHA-1 matches google-services.json certificate_hash. Native Google Sign-In should be correctly configured for this keystore.');
+    
     process.exit(0);
   }
 
   if (hasInRawColon || hasInRawHex) {
-    console.log('\u2714 Found local SHA-1 in google-services.json content (raw). Native Google Sign-In should be accepted.');
-    console.log('Found as colon-form:', hasInRawColon, 'or hex-form:', hasInRawHex);
+    
+    
     process.exit(0);
   }
 

@@ -26,15 +26,15 @@ async function main() {
 
     const existingBucket = (buckets || []).find((bucket) => bucket.name === MEDIA_BUCKET);
     if (existingBucket) {
-      console.log(`Bucket already exists: ${MEDIA_BUCKET}`);
+      
       if (!existingBucket.public) {
-        console.log(`Bucket ${MEDIA_BUCKET} is not public. Updating public access...`);
+        
         const { data: updatedBucket, error: updateError } = await supabase.storage.updateBucket(MEDIA_BUCKET, { public: true });
         if (updateError) {
           console.error('Failed to update Supabase storage bucket visibility:', updateError.message || updateError);
           process.exit(1);
         }
-        console.log(`Updated bucket ${MEDIA_BUCKET} to public access:`, updatedBucket.public);
+        
       }
       process.exit(0);
     }
@@ -45,8 +45,8 @@ async function main() {
       process.exit(1);
     }
 
-    console.log(`Created Supabase storage bucket: ${data.name}`);
-    console.log('Bucket public access:', data.public);
+    
+    
     process.exit(0);
   } catch (err) {
     console.error('Unexpected error creating Supabase bucket:', err.message || err);

@@ -23,19 +23,44 @@ function asString(value) {
 function buildFcmData(record, badgeCount = 1) {
   const payload = record.data && typeof record.data === 'object' ? record.data : {};
   const likeRow = payload.like_row && typeof payload.like_row === 'object' ? payload.like_row : {};
+  const type = asString(record.type);
+  const actorId = asString(record.actor_id || payload.actor_id || likeRow.liker_id || '');
+  const messageId = asString(payload.message_id || '');
+  const clickAction = type === 'message' && actorId && messageId
+    ? `joblink://message?senderId=${encodeURIComponent(actorId)}&messageId=${encodeURIComponent(messageId)}`
+    : asString(payload.click_action || 'joblink://app/notifications');
 
   return {
     title: asString(record.title || 'New notification'),
     body: asString(record.body || 'You have a new update'),
     badge: asString(badgeCount),
     notification_id: asString(record.id),
-    type: asString(record.type),
-    actor_id: asString(record.actor_id || payload.actor_id || likeRow.liker_id || ''),
+    type,
+    actor_id: actorId,
+    message_id: messageId,
     actor_name: asString(payload.actor_name || payload.actor || 'Someone'),
     actor_avatar: asString(payload.actor_avatar || payload.actor_image || payload.avatar_url || ''),
     target_id: asString(payload.target_id || payload.target_profile || payload.liked_profile_id || likeRow.liked_profile_id || ''),
     conversation_id: asString(payload.conversation_id || payload.thread_id || record.actor_id || record.id),
-    click_action: asString(payload.click_action || 'joblink://app/notifications'),
+    click_action: clickAction,
+  };
+}
+
+function buildFcmMessage(token, data) {
+  return {
+    token,
+    data,
+    notification: {
+      title: data.title,
+      body: data.body,
+    },
+    android: {
+      priority: 'HIGH',
+      notification: {
+        channel_id: 'joblink_notifications_v3',
+        sound: 'default',
+      },
+    },
   };
 }
 
@@ -86,7 +111,7 @@ function startFcmNotificationListener(supabase, onStatusChange = () => {}) {
 
         if (error) throw error;
         if (!devices?.length) {
-          console.info('[FCM] No Android device tokens for notification recipient.');
+          
           return;
         }
 
@@ -103,13 +128,7 @@ function startFcmNotificationListener(supabase, onStatusChange = () => {}) {
         const results = await Promise.allSettled(devices.map(({ token }) => axios.post(
           FIREBASE_MESSAGING_ENDPOINT(credentials.project_id),
           {
-            message: {
-              token,
-              data,
-              android: {
-                priority: 'HIGH',
-              },
-            },
+            message: buildFcmMessage(token, data),
           },
           { headers: { Authorization: `Bearer ${accessToken.token}`, 'Content-Type': 'application/json' } }
         )));
@@ -120,7 +139,7 @@ function startFcmNotificationListener(supabase, onStatusChange = () => {}) {
             console.error('[FCM] Could not deliver Android notification:', reason?.response?.data || reason?.message || reason);
           });
         } else {
-          console.info(`[FCM] Delivered notification ${notification.id} to ${results.length} Android device(s).`);
+          
         }
       } catch (error) {
         console.error('[FCM] Notification delivery failed:', error?.response?.data || error.message || error);
@@ -128,7 +147,7 @@ function startFcmNotificationListener(supabase, onStatusChange = () => {}) {
     })
     .subscribe((status, error) => {
       if (status === 'SUBSCRIBED') {
-        console.info('[FCM] Subscribed to notification inserts.');
+        
         onStatusChange('subscribed');
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         console.error(`[FCM] Notification subscription ${status}:`, error || '');
@@ -142,4 +161,4 @@ function startFcmNotificationListener(supabase, onStatusChange = () => {}) {
   return channel;
 }
 
-module.exports = { buildFcmData, startFcmNotificationListener };
+module.exports = { buildFcmData, buildFcmMessage, startFcmNotificationListener };

@@ -8,7 +8,7 @@ const backendEnvPath = path.resolve(__dirname, '.env');
 const rootEnvPath = path.resolve(__dirname, '..', '.env');
 dotenv.config({ path: backendEnvPath });
 dotenv.config({ path: rootEnvPath, override: false });
-console.log(`✅ Loaded env files: ${backendEnvPath}${process.env.PORT ? '' : ` (root fallback ${rootEnvPath} may be used)`}`);
+
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -34,7 +34,7 @@ const supabaseEnvStatus = {
   SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL),
   SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE),
 };
-console.log('ℹ️ Supabase environment variables loaded:', supabaseEnvStatus);
+
 
 const app = express();
 
@@ -89,7 +89,7 @@ if (!hasSupabaseAdmin) {
       });
       try {
         channel.subscribe();
-        console.log('✅ Subscribed to follows realtime events');
+        
       } catch (e) {
         console.warn('⚠️ Realtime subscribe failed', e?.message || e);
       }
@@ -137,9 +137,9 @@ app.use((err, req, res, next) => {
 // Start server
 const PORT = process.env.BACKEND_PORT || process.env.PORT || 8080;
 app.listen(PORT, () => {
-  console.log(`✅ Joblink Backend running on port ${PORT}`);
-  console.log(`📧 Email verification endpoint: POST /api/auth/verify-google-email`);
-  console.log(`🔒 Admin endpoints mounted at: /api/admin`);
+  
+  
+  
 });
 
 module.exports = app;

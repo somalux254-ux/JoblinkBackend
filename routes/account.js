@@ -4,6 +4,16 @@ const { getAdminClient } = require('../supabaseAdmin');
 
 const AVATAR_BUCKET = 'user-avatars';
 const MEDIA_BUCKET = 'media_files';
+const MAX_IMAGE_UPLOAD_BYTES = 1_000_000;
+const MAX_MEDIA_UPLOAD_BYTES = 50 * 1024 * 1024;
+const MAX_VIDEO_UPLOAD_BYTES = 10 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const ALLOWED_VIDEO_TYPES = new Set(['video/mp4', 'video/webm', 'video/ogg']);
+const ALLOWED_MEDIA_TYPES = new Set([
+  ...ALLOWED_IMAGE_TYPES,
+  ...ALLOWED_VIDEO_TYPES,
+  'application/pdf',
+]);
 
 const BUCKET_ALIASES = {
   'user-avatars': ['user_avatars', 'avatars', 'user-avatars', 'user_avatars_bucket'],
@@ -11,6 +21,45 @@ const BUCKET_ALIASES = {
   'media-files': ['media_files', 'media', 'uploads', 'media_files_bucket'],
   user_avatars: ['user-avatars', 'avatars', 'user_avatars_bucket'],
   'media': ['media_files', 'media-files', 'uploads'],
+};
+
+const STORAGE_BUCKETS = new Set([
+  ...Object.keys(BUCKET_ALIASES),
+  ...Object.values(BUCKET_ALIASES).flat(),
+]);
+
+const getOwnedStorageObject = (value, defaultBucket, userId) => {
+  if (typeof value !== 'string' || !value.trim()) return null;
+
+  let bucket = defaultBucket;
+  let objectPath = value.trim();
+  if (/^https?:\/\//i.test(objectPath)) {
+    try {
+      const pathname = new URL(objectPath).pathname;
+      const storageMatch = pathname.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+)$/i);
+      if (!storageMatch) return null;
+      bucket = decodeURIComponent(storageMatch[1]);
+      objectPath = decodeURIComponent(storageMatch[2]);
+    } catch (_) {
+      return null;
+    }
+  } else {
+    const storageMatch = objectPath.match(/^\/?storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+)$/i);
+    if (storageMatch) {
+      bucket = decodeURIComponent(storageMatch[1]);
+      objectPath = decodeURIComponent(storageMatch[2]);
+    } else {
+      objectPath = objectPath.replace(/^\/+/, '');
+      const prefixedBucket = objectPath.match(/^([^/]+)\/(.+)$/);
+      if (prefixedBucket && STORAGE_BUCKETS.has(prefixedBucket[1])) {
+        bucket = prefixedBucket[1];
+        objectPath = prefixedBucket[2];
+      }
+    }
+  }
+
+  if (!STORAGE_BUCKETS.has(bucket) || !objectPath.startsWith(`${userId}/`)) return null;
+  return { bucket, path: objectPath };
 };
 
 const resolveStorageBucket = async (supabase, bucketName) => {
@@ -105,6 +154,7 @@ const uploadToStorageWithServiceRole = async ({ bucketName, path, buffer, conten
         Authorization: `Bearer ${serviceRoleKey}`,
         apikey: serviceRoleKey,
         'Content-Type': contentType,
+        'cache-control': 'max-age=31536000',
         'x-upsert': 'true',
       },
       body: buffer,
@@ -372,6 +422,83 @@ router.delete('/devices/:deviceId', authenticateUser, async (req, res) => {
   }
 });
 
+router.post('/delete-profile', authenticateUser, async (req, res) => {
+  try {
+    const profileId = String(req.body?.profileId || '');
+    if (!profileId) {
+      return res.status(400).json({ error: 'profileId is required' });
+    }
+
+    const supabase = getAdminClient();
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, auth_user_id, avatar_url, avatar_path, media_files')
+      .eq('id', profileId)
+      .eq('auth_user_id', req.userId)
+      .maybeSingle();
+
+    if (profileError) throw profileError;
+    if (!profile) return res.status(404).json({ error: 'Profile not found' });
+
+    const storageObjects = new Map();
+    const addObject = (value, bucket) => {
+      const storageObject = getOwnedStorageObject(value, bucket, req.userId);
+      if (storageObject) {
+        if (!storageObjects.has(storageObject.bucket)) storageObjects.set(storageObject.bucket, new Set());
+        storageObjects.get(storageObject.bucket).add(storageObject.path);
+      }
+    };
+
+    addObject(profile.avatar_path, AVATAR_BUCKET);
+    addObject(profile.avatar_url, AVATAR_BUCKET);
+    let mediaFiles = profile.media_files;
+    if (typeof mediaFiles === 'string') {
+      try {
+        mediaFiles = JSON.parse(mediaFiles);
+      } catch (error) {
+        console.warn('[DELETE profile] Could not parse profile media_files JSON:', error.message);
+        mediaFiles = [];
+      }
+    }
+    if (Array.isArray(mediaFiles)) {
+      mediaFiles.forEach((media) => {
+        const mediaBucket = STORAGE_BUCKETS.has(media?.storageBucket) ? media.storageBucket : MEDIA_BUCKET;
+        if (typeof media === 'string') {
+          addObject(media, MEDIA_BUCKET);
+          return;
+        }
+        if (!media || typeof media !== 'object') return;
+        addObject(media.path || media.storage_path || media.storagePath || media.file_path || media.filePath, mediaBucket);
+        addObject(media.publicUrl || media.public_url || media.url || media.file_url || media.fileUrl, mediaBucket);
+      });
+    }
+
+    for (const [bucket, paths] of storageObjects) {
+      const { error: storageError } = await supabase.storage.from(bucket).remove([...paths]);
+      if (storageError) {
+        console.error('[DELETE profile] Storage cleanup failed:', { profileId, bucket, error: storageError });
+        return res.status(500).json({ error: 'Could not delete all profile media. The profile was not deleted; please retry.' });
+      }
+    }
+
+    const { data: deletedProfile, error: deleteError } = await supabase
+      .from('profiles')
+      .delete()
+      .eq('id', profileId)
+      .eq('auth_user_id', req.userId)
+      .select('id')
+      .maybeSingle();
+
+    if (deleteError) throw deleteError;
+    if (!deletedProfile) return res.status(404).json({ error: 'Profile not found' });
+
+    return res.json({ success: true, profileId: deletedProfile.id, deletedMediaFiles: [...storageObjects.values()].reduce((total, paths) => total + paths.size, 0) });
+  } catch (error) {
+    console.error('[POST /account/delete-profile] Failed:', error);
+    return res.status(500).json({ error: 'Failed to delete profile and its media' });
+  }
+});
+
 /**
  * POST /api/account/delete
  * Permanently delete the authenticated user's account
@@ -385,7 +512,7 @@ router.post('/delete', authenticateUser, async (req, res) => {
   try {
     const supabase = getAdminClient();
     
-    console.log(`[POST /account/delete] User ${req.userId} requesting account deletion`);
+    
 
     // Step 1: Fetch the user's profile to get media files and avatar
     const { data: profile, error: profileError } = await supabase
@@ -423,7 +550,7 @@ router.post('/delete', authenticateUser, async (req, res) => {
 
         // Delete all files from storage
         if (mediaFilesToDelete.length > 0) {
-          console.log(`[DELETE account] Deleting ${mediaFilesToDelete.length} media files`);
+          
           
           // Delete from avatar bucket
           const avatarFiles = mediaFilesToDelete.filter(f => f.includes('avatars'));
@@ -477,7 +604,7 @@ router.post('/delete', authenticateUser, async (req, res) => {
         console.warn('[DELETE account] Auth deletion warning:', authDeleteError.message || authDeleteError);
       }
     } else {
-      console.log(`[DELETE account] Preserving auth identity ${req.userId}; removing only profile data`);
+      
     }
 
     // Step 6: Make sure no profile row remains in the database after auth deletion.
@@ -499,7 +626,7 @@ router.post('/delete', authenticateUser, async (req, res) => {
       }
     }
 
-    console.log(`[POST /account/delete] ✅ Account ${req.userId} deleted successfully`);
+    
 
     res.json({
       success: true,
@@ -521,6 +648,9 @@ router.post('/avatar-upload', authenticateUser, async (req, res) => {
     if (!filename || !mimeType || !base64) {
       return res.status(400).json({ error: 'filename, mimeType, and base64 are required' });
     }
+    if (!ALLOWED_IMAGE_TYPES.has(mimeType) || /\.gif$/i.test(filename)) {
+      return res.status(400).json({ error: 'Only JPG, PNG, or WebP avatar images are supported.' });
+    }
 
     const safeFilename = sanitizeFileName(filename);
     const timestamp = Date.now();
@@ -528,6 +658,9 @@ router.post('/avatar-upload', authenticateUser, async (req, res) => {
     const supabase = getAdminClient();
 
     const buffer = Buffer.from(base64, 'base64');
+    if (buffer.length >= MAX_IMAGE_UPLOAD_BYTES) {
+      return res.status(413).json({ error: 'Avatar image must be smaller than 1 MB.' });
+    }
     let uploadBucket = await resolveStorageBucket(supabase, AVATAR_BUCKET);
     let uploadResult = await uploadToStorageWithServiceRole({
       bucketName: uploadBucket,
@@ -587,6 +720,9 @@ router.post('/media-upload', authenticateUser, async (req, res) => {
     if (!filename || !mimeType || !base64) {
       return res.status(400).json({ error: 'filename, mimeType, and base64 are required' });
     }
+    if (!ALLOWED_MEDIA_TYPES.has(mimeType) || /\.gif$/i.test(filename)) {
+      return res.status(400).json({ error: 'Choose a supported JPG, PNG, WebP, video clip, or PDF file.' });
+    }
 
     const safeFilename = sanitizeFileName(filename);
     const timestamp = Date.now();
@@ -594,6 +730,15 @@ router.post('/media-upload', authenticateUser, async (req, res) => {
     const supabase = getAdminClient();
 
     const buffer = Buffer.from(base64, 'base64');
+    if (ALLOWED_IMAGE_TYPES.has(mimeType) && buffer.length >= MAX_IMAGE_UPLOAD_BYTES) {
+      return res.status(413).json({ error: 'Images must be smaller than 1 MB.' });
+    }
+    if (ALLOWED_VIDEO_TYPES.has(mimeType) && buffer.length > MAX_VIDEO_UPLOAD_BYTES) {
+      return res.status(413).json({ error: 'Video clips must be 10 MB or smaller.' });
+    }
+    if (buffer.length > MAX_MEDIA_UPLOAD_BYTES) {
+      return res.status(413).json({ error: 'Media files must be 50 MB or smaller.' });
+    }
     let uploadBucket = await resolveStorageBucket(supabase, MEDIA_BUCKET);
     let uploadResult = await uploadToStorageWithServiceRole({
       bucketName: uploadBucket,

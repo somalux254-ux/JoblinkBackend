@@ -202,7 +202,7 @@ async function initializeRedis() {
   redisInitializationAttempted = true;
   const connectedClient = await ensureRedisClient();
   if (connectedClient) {
-    console.log('✅ Redis connected:', resolveRedisUrl());
+    
     return connectedClient;
   }
   return null;

@@ -158,7 +158,7 @@ router.post('/google-signin', googleSigninBody, async (req, res) => {
       });
     }
 
-    console.log('🔐 Verifying Google token for:', email);
+    
 
     const looksLikeJwt = (value) => typeof value === 'string' && value.split('.').length === 3 && value.length > 20;
     if (!looksLikeJwt(token)) {
@@ -179,19 +179,21 @@ router.post('/google-signin', googleSigninBody, async (req, res) => {
     try {
       decodedPayload = decodeJwtPayload(token);
       decodedAud = decodedPayload?.aud || decodedPayload?.audience || null;
-      console.log('ℹ️ Decoded token audience (pre-verify):', decodedAud);
+      
     } catch (e) {
       console.warn('⚠️ Failed to decode token payload for debugging:', e.message);
     }
 
     let payload;
+    let isGooglePayloadVerified = false;
     try {
       const ticket = await googleClient.verifyIdToken({
         idToken: token,
         audience: googleClientIds,
       });
       payload = ticket.getPayload();
-      console.log('✅ Google token verified for:', payload.email, 'audience:', payload.aud);
+      isGooglePayloadVerified = true;
+      
     } catch (tokenError) {
       const message = tokenError?.message || String(tokenError);
       console.error('❌ Google token verification failed:', message);
@@ -200,18 +202,16 @@ router.post('/google-signin', googleSigninBody, async (req, res) => {
 
       if (decodedPayload?.email && decodedPayload?.sub) {
         const isAllowedAudience = isAudienceAllowed(decodedAud, googleClientIds);
-        console.log('ℹ️ Falling back to decoded payload because the token has a usable payload:', {
-          email: decodedPayload.email,
-          sub: decodedPayload.sub,
-          aud: decodedAud,
-          isAllowedAudience,
-        });
+        
 
         payload = {
           email: decodedPayload.email,
           sub: decodedPayload.sub,
           aud: decodedAud,
           name: decodedPayload.name || decodedPayload.given_name || decodedPayload.family_name || null,
+          given_name: decodedPayload.given_name || null,
+          family_name: decodedPayload.family_name || null,
+          picture: decodedPayload.picture || null,
         };
       } else {
         return res.status(401).json({
@@ -258,11 +258,29 @@ router.post('/google-signin', googleSigninBody, async (req, res) => {
       });
     }
 
-    console.log('✅ Session tokens generated successfully');
-    console.log('🔍 User ID from OAuth:', signInData.user.id);
-    console.log('📧 Email from OAuth:', signInData.user.email);
+    if (isGooglePayloadVerified && payload.picture) {
+      const existingMetadata = signInData.user.user_metadata || {};
+      const googleMetadata = {
+        ...existingMetadata,
+        picture: payload.picture,
+        avatar_url: payload.picture,
+        ...(payload.name ? { full_name: payload.name, name: payload.name } : {}),
+        ...(payload.given_name ? { given_name: payload.given_name } : {}),
+        ...(payload.family_name ? { family_name: payload.family_name } : {}),
+      };
+      const { error: metadataError } = await supabase.auth.admin.updateUserById(signInData.user.id, {
+        user_metadata: googleMetadata,
+      });
+      if (metadataError) {
+        console.error('[google-signin] Could not save verified Google profile photo to Auth metadata:', metadataError);
+      }
+    }
 
-    console.log('📤 Sending authenticated session; profile routing will run client-side.');
+    
+    
+    
+
+    
 
     res.json({
       user: {

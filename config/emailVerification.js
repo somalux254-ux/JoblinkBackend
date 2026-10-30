@@ -33,11 +33,11 @@ if (requestedEmailVerificationMethod === 'sendgrid' && !isSendGridConfigured && 
 const getLogoBase64 = () => {
   try {
     const logoPath = path.join(__dirname, '../', 'LinkWhite.png');
-    console.log(`🔍 Looking for logo at: ${logoPath}`);
+    
     if (fs.existsSync(logoPath)) {
       const logoData = fs.readFileSync(logoPath);
       const base64 = logoData.toString('base64');
-      console.log(`✅ Logo loaded successfully (${logoData.length} bytes)`);
+      
       return 'data:image/png;base64,' + base64;
     } else {
       console.warn(`⚠️ Logo file not found at: ${logoPath}`);
@@ -153,15 +153,15 @@ const sendViaGmailSmtp = async ({ email, html, text }) => {
  */
 const sendVerificationCode = async (email) => {
   try {
-    console.log(`📧 Sending verification code to ${email}...`);
-    console.log(`🔍 EMAIL_VERIFICATION_METHOD: ${EMAIL_VERIFICATION_METHOD}`);
+    
+    
 
     // Debug: Check if env vars are loaded
-    console.log(`🔍 GMAIL_SEND_EMAIL: ${process.env.GMAIL_SEND_EMAIL ? '✅ SET' : '❌ NOT SET'}`);
-    console.log(`🔍 GMAIL_SEND_PASSWORD: ${process.env.GMAIL_SEND_PASSWORD ? '✅ SET' : '❌ NOT SET'}`);
-    console.log(`🔍 SENDGRID_API_KEY: ${process.env.SENDGRID_API_KEY ? '✅ SET' : '❌ NOT SET'}`);
-    console.log(`🔍 SENDGRID_API_KEY_FORMAT: ${isValidSendGridApiKey(process.env.SENDGRID_API_KEY) ? '✅ VALID' : '❌ INVALID'}`);
-    console.log(`🔍 SENDGRID_FROM_EMAIL: ${process.env.SENDGRID_FROM_EMAIL ? '✅ SET' : '❌ NOT SET'}`);
+    
+    
+    
+    
+    
 
     // Check if email is valid format first - allow +, -, ., _ and numbers
     const emailRegex = /^[a-z0-9._+\-]+@gmail\.com$/i;
@@ -214,7 +214,7 @@ const sendVerificationCode = async (email) => {
 
       try {
         await sgMail.send(msg);
-        console.log(`✅ Verification code sent successfully via SendGrid to ${email}`);
+        
         return {
           success: true,
           message: 'Verification code sent to your email',
@@ -229,7 +229,7 @@ const sendVerificationCode = async (email) => {
           try {
             console.warn('⚠️ SendGrid failed; attempting delivery through configured Gmail SMTP.');
             await sendViaGmailSmtp({ email, html: emailTemplate, text: plainText });
-            console.log(`✅ Verification code sent successfully via Gmail SMTP fallback to ${email}`);
+            
             return {
               success: true,
               message: 'Verification code sent to your email',
@@ -271,7 +271,7 @@ const sendVerificationCode = async (email) => {
       try {
         await sendViaGmailSmtp({ email, html: emailTemplate, text: plainText });
 
-        console.log(`✅ Verification code sent successfully to ${email}`);
+        
         return {
           success: true,
           message: 'Verification code sent to your email',
@@ -349,7 +349,7 @@ const verifyCode = async (email, code) => {
         expiresAt: Date.now() + VERIFICATION_CACHE_TTL
       });
 
-      console.log(`✅ Email verified: ${email}`);
+      
       return {
         verified: true,
         message: 'Email verified successfully!'
@@ -380,13 +380,13 @@ const verifyCode = async (email, code) => {
 const verifyGoogleEmail = async (email) => {
   const normalizedEmail = email.toLowerCase();
   
-  console.log(`\n🔍 CHECKING EMAIL FORMAT: ${email}`);
+  
 
   try {
     // Check if already verified
     const verified = verifiedEmails.get(normalizedEmail);
     if (verified && Date.now() < verified.expiresAt) {
-      console.log(`✅ Email already verified!`);
+      
       return {
         exists: true,
         verified: true,
